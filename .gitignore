@@ -1,6 +1,18 @@
+# Environnement virtuel
+RCP220-venv/
+
+# MLflow (local)
+mlruns/
+mlflow.db
+
+# Modèles lourds
+model/*.pth
+
+# Python
 __pycache__/
 *.pyc
 .env
 *.log
-model/*.pth
+
+# DVC
 /data_registry.md
