@@ -1,0 +1,5 @@
+outs:
+- md5: 6502417f63b1b49ceaccb1b0d03fda47
+  size: 482
+  hash: md5
+  path: data_registry.md

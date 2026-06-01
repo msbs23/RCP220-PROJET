@@ -3,3 +3,4 @@ __pycache__/
 .env
 *.log
 model/*.pth
+/data_registry.md
