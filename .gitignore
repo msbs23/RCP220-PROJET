@@ -16,3 +16,4 @@ __pycache__/
 
 # DVC
 /data_registry.md
+__pycache__/
