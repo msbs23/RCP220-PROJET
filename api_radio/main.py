@@ -4,6 +4,7 @@ from fastapi import FastAPI, UploadFile, File
 from api_radio.schemas import PredictionResponse
 from api_radio.singleton_model import ModelSingleton
 from api_radio.preprocessing import preprocess_image
+from prometheus_fastapi_instrumentator import Instrumentator
 import torch
 import logging
 
@@ -20,6 +21,9 @@ app = FastAPI(
     version="1.0",
 )
 
+Instrumentator().instrument(app).expose(app)
+
+
 @app.on_event("startup")
 async def startup():
     ModelSingleton.get_instance()
@@ -28,6 +32,11 @@ async def startup():
 @app.get("/health")
 def health():
     return {"status": "OK"}
+
+@app.post("/feedback")
+async def feedback(prediction_id: str, correct: bool):
+    logger.info(f"FEEDBACK | correct={correct} | id={prediction_id}")
+    return {"status": "recorded"}
 
 @app.post("/predict", response_model=PredictionResponse)
 async def predict(image: UploadFile = File(...)):
