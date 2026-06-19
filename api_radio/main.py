@@ -1,7 +1,10 @@
 import time
+from datetime import timedelta
 
-from fastapi import FastAPI, UploadFile, File
-from api_radio.schemas import PredictionResponse
+from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordRequestForm
+from api_radio.schemas import PredictionResponse, Token
+from api_radio.auth import authenticate_user, create_access_token, get_current_user, ACCESS_TOKEN_EXPIRE_MINUTES
 from api_radio.singleton_model import ModelSingleton
 from api_radio.preprocessing import preprocess_image
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -29,17 +32,36 @@ async def startup():
     ModelSingleton.get_instance()
     logger.info("Modèle chargé et API prête")
 
+
 @app.get("/health")
 def health():
     return {"status": "OK"}
 
+
+@app.post("/token", response_model=Token)
+async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    user = authenticate_user(form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Identifiants incorrects",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token = create_access_token(
+        data={"sub": user["username"]},
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+    return Token(access_token=access_token, token_type="bearer")
+
+
 @app.post("/feedback")
-async def feedback(prediction_id: str, correct: bool):
+async def feedback(prediction_id: str, correct: bool, _: dict = Depends(get_current_user)):
     logger.info(f"FEEDBACK | correct={correct} | id={prediction_id}")
     return {"status": "recorded"}
 
+
 @app.post("/predict", response_model=PredictionResponse)
-async def predict(image: UploadFile = File(...)):
+async def predict(image: UploadFile = File(...), _: dict = Depends(get_current_user)):
     start = time.time()
 
     image_bytes = await image.read()
@@ -52,7 +74,7 @@ async def predict(image: UploadFile = File(...)):
         probabilite = torch.sigmoid(output).item()
 
     label = "malade" if probabilite > 0.5 else "sain"
-    latence = round(time.time() - start,4)
+    latence = round(time.time() - start, 4)
 
     # ================== KPI modèle : score, label) ==========================#
     logger.info(
@@ -74,5 +96,5 @@ async def predict(image: UploadFile = File(...)):
 
     return PredictionResponse(
         label=label,
-        probabilite=round(probabilite,4),
+        probabilite=round(probabilite, 4),
     )
