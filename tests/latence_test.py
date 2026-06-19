@@ -4,14 +4,34 @@ Tests de latence pour l'API de détection d'anomalies radiologiques.
 Lance avec : python tests/load_test.py
 """
 
+import os
 import requests
 import time
 import threading
 import io
 from PIL import Image
+from dotenv import load_dotenv
 
-BASE_URL = "http://localhost:8000"
+load_dotenv()
+
+BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 SEUIL_LATENCE = 2.0  # secondes — seuil défini dans main.py
+
+
+def get_auth_headers() -> dict:
+    """Obtient un token JWT et retourne le header Authorization."""
+    username = os.getenv("TEST_USERNAME")
+    password = os.getenv("TEST_PASSWORD")
+    if not username or not password:
+        raise RuntimeError("TEST_USERNAME et TEST_PASSWORD doivent être définis dans .env")
+    r = requests.post(
+        f"{BASE_URL}/token",
+        data={"username": username, "password": password},
+    )
+    r.raise_for_status()
+    token = r.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
 
 def make_fake_image(size=(224, 224)):
     """Crée une image factice en mémoire."""
@@ -23,12 +43,12 @@ def make_fake_image(size=(224, 224)):
 
 
 # ─── TEST 1 : latence simple (20 requêtes séquentielles) ───────────────────
-def test_latence_simple():
+def test_latence_simple(headers):
     print("\n=== TEST 1 : Latence simple (20 requêtes séquentielles) ===")
     latences = []
     for i in range(20):
         img = make_fake_image()
-        r = requests.post(f"{BASE_URL}/predict", files={"image": ("test.png", img, "image/png")})
+        r = requests.post(f"{BASE_URL}/predict", files={"image": ("test.png", img, "image/png")}, headers=headers)
         latence = r.elapsed.total_seconds()
         latences.append(latence)
         print(f"  [{i+1:02d}] {r.json()} — {latence:.3f}s")
@@ -38,14 +58,14 @@ def test_latence_simple():
 
 
 # ─── TEST 2 : latence sous charge (10 requêtes simultanées) ────────────────
-def test_latence_charge():
+def test_latence_charge(headers):
     print("\n=== TEST 2 : Latence sous charge (10 requêtes simultanées) ===")
     resultats = []
     lock = threading.Lock()
 
     def envoyer_requete(i):
         img = make_fake_image()
-        r = requests.post(f"{BASE_URL}/predict", files={"image": ("test.png", img, "image/png")})
+        r = requests.post(f"{BASE_URL}/predict", files={"image": ("test.png", img, "image/png")}, headers=headers)
         latence = r.elapsed.total_seconds()
         with lock:
             resultats.append(latence)
@@ -62,12 +82,12 @@ def test_latence_charge():
 
 
 # ─── TEST 3 : assertion seuil 2s ───────────────────────────────────────────
-def test_seuil_latence():
+def test_seuil_latence(headers):
     print("\n=== TEST 3 : Assertion seuil 2s (10 requêtes) ===")
     echecs = []
     for i in range(10):
         img = make_fake_image()
-        r = requests.post(f"{BASE_URL}/predict", files={"image": ("test.png", img, "image/png")})
+        r = requests.post(f"{BASE_URL}/predict", files={"image": ("test.png", img, "image/png")}, headers=headers)
         latence = r.elapsed.total_seconds()
         status = "✓" if latence < SEUIL_LATENCE else "✗ DÉPASSEMENT"
         print(f"  [{i+1:02d}] {latence:.3f}s — {status}")
@@ -82,18 +102,18 @@ def test_seuil_latence():
 
 
 # ─── TEST 4 : latence avec grande image (simulation radio réelle) ───────────
-def test_latence_grande_image():
+def test_latence_grande_image(headers):
     print("\n=== TEST 4 : Latence grande image 1024x1024 (simulation radio réelle) ===")
     latences_small = []
     latences_large = []
 
     for i in range(5):
         img_small = make_fake_image(size=(224, 224))
-        r = requests.post(f"{BASE_URL}/predict", files={"image": ("small.png", img_small, "image/png")})
+        r = requests.post(f"{BASE_URL}/predict", files={"image": ("small.png", img_small, "image/png")}, headers=headers)
         latences_small.append(r.elapsed.total_seconds())
 
         img_large = make_fake_image(size=(1024, 1024))
-        r = requests.post(f"{BASE_URL}/predict", files={"image": ("large.png", img_large, "image/png")})
+        r = requests.post(f"{BASE_URL}/predict", files={"image": ("large.png", img_large, "image/png")}, headers=headers)
         latences_large.append(r.elapsed.total_seconds())
         time.sleep(0.5)
 
@@ -104,8 +124,9 @@ def test_latence_grande_image():
 
 
 if __name__ == "__main__":
-    test_latence_simple()
-    test_latence_charge()
-    test_seuil_latence()
-    test_latence_grande_image()
+    headers = get_auth_headers()
+    test_latence_simple(headers)
+    test_latence_charge(headers)
+    test_seuil_latence(headers)
+    test_latence_grande_image(headers)
     print("\n=== Tous les tests terminés — vérifiez Grafana pour les courbes ===")
