@@ -1,0 +1,5 @@
+outs:
+- md5: 68f992d4d40e2f7e96ea0e1458a6312c
+  size: 10253
+  hash: md5
+  path: head_semi_supervised_v1.0_auc0718.pth

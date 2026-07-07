@@ -1,0 +1,61 @@
+version: "3.9"
+
+services:
+  mlflow:
+    image: ghcr.io/mlflow/mlflow
+    container_name: mlflow_rcp220
+    ports:
+      - "5000:5000"
+    environment:
+      - MLFLOW_SERVER_DISABLE_SECURITY_MIDDLEWARE=true
+    volumes:
+      - mlflow_data:/mlflow:z
+    command: >
+      
+      mlflow server
+      --host 0.0.0.0
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --artifacts-destination /mlflow/artifacts
+      --serve-artifacts
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  api_radio:
+    build: .
+    container_name: api_radio_rcp220
+    ports:
+      - "8000:8000"
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MLFLOW_EXPERIMENT_NAME=rcp220_semi_supervised
+    volumes:
+      - ./api_radio:/app/api_radio:z
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    restart: unless-stopped
+
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus_rcp220
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:z
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana_rcp220
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+volumes:
+  mlflow_data:
